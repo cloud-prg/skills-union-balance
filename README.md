@@ -12,10 +12,38 @@ A local utility skill/project to unify skills from multiple platform directories
 python3 scripts/unify_skills.py \
   --dirs "/Users/cloud_prg/.claude/skills" "/Users/cloud_prg/.codex/skills" "/Users/cloud_prg/.agents/skills" "/Users/cloud_prg/.cursor/skills-cursor" \
   --mode copy \
-  --dry-run
+  --dry-run \
+  --report-json "./report-dry-run.json"
 ```
 
 Then remove `--dry-run` to apply.
+
+To keep an execution report for comparison:
+
+```bash
+python3 scripts/unify_skills.py \
+  --dirs "/Users/cloud_prg/.claude/skills" "/Users/cloud_prg/.codex/skills" "/Users/cloud_prg/.agents/skills" "/Users/cloud_prg/.cursor/skills-cursor" \
+  --mode copy \
+  --report-json "./report-apply.json"
+```
+
+Continue on permission error (recommended for mixed protected directories):
+
+```bash
+python3 scripts/unify_skills.py \
+  --dirs "/Users/cloud_prg/.claude/skills" "/Users/cloud_prg/.codex/skills" "/Users/cloud_prg/.agents/skills" "/Users/cloud_prg/.cursor/skills-cursor" \
+  --mode copy \
+  --continue-on-error \
+  --report-json "./report-apply.json"
+```
+
+Check top-level alignment (excluding hidden folders like `.system`):
+
+```bash
+python3 scripts/check_alignment.py \
+  --dirs "/Users/cloud_prg/.claude/skills" "/Users/cloud_prg/.codex/skills" "/Users/cloud_prg/.agents/skills" "/Users/cloud_prg/.cursor/skills-cursor" \
+  --report-json "./alignment.json"
+```
 
 ## Note
 

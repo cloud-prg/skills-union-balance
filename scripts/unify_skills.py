@@ -4,8 +4,10 @@
 from __future__ import annotations
 
 import argparse
+import json
 import shutil
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Iterable, List
 
@@ -71,14 +73,30 @@ def apply_distribution(
     mode: str,
     dry_run: bool,
     replace_existing: bool,
+    continue_on_error: bool,
+    report_json: Path | None,
 ) -> None:
     copied = 0
     linked = 0
     skipped = 0
+    warnings: List[str] = []
+    errors: List[Dict[str, str]] = []
+    per_target: Dict[str, Dict[str, int]] = {}
 
     for target_dir in base_dirs:
+        target_key = str(target_dir)
+        per_target[target_key] = {
+            "would_copy": 0,
+            "would_link": 0,
+            "would_skip_exists": 0,
+            "copied": 0,
+            "linked": 0,
+            "skip_exists": 0,
+        }
         if not target_dir.exists():
-            print(f"[WARN] Skip missing target dir: {target_dir}")
+            warn_msg = f"Skip missing target dir: {target_dir}"
+            warnings.append(warn_msg)
+            print(f"[WARN] {warn_msg}")
             continue
         for skill_name, source in sorted(union.items()):
             target_path = target_dir / skill_name
@@ -88,23 +106,60 @@ def apply_distribution(
                 action = "would_copy" if mode == "copy" else "would_link"
                 if target_path.exists() and not replace_existing:
                     action = "would_skip_exists"
+                per_target[target_key][action] += 1
                 print(
                     f"[DRY] {action}: {skill_name} | src={src_path} -> dst={target_path}"
                 )
                 continue
 
             if mode == "copy":
-                result = copy_skill(src_path, target_path, replace_existing)
-                if result == "copied":
-                    copied += 1
-                else:
-                    skipped += 1
+                try:
+                    result = copy_skill(src_path, target_path, replace_existing)
+                    if result == "copied":
+                        copied += 1
+                        per_target[target_key]["copied"] += 1
+                    else:
+                        skipped += 1
+                        per_target[target_key]["skip_exists"] += 1
+                except Exception as exc:
+                    err_msg = str(exc)
+                    errors.append(
+                        {
+                            "target_dir": target_key,
+                            "skill_name": skill_name,
+                            "source_path": str(src_path),
+                            "target_path": str(target_path),
+                            "error": err_msg,
+                        }
+                    )
+                    print(f"[ERR] failed copy: {skill_name} -> {target_path} | {err_msg}")
+                    if not continue_on_error:
+                        raise
+                    continue
             else:
-                result = link_skill(src_path, target_path, replace_existing)
-                if result == "linked":
-                    linked += 1
-                else:
-                    skipped += 1
+                try:
+                    result = link_skill(src_path, target_path, replace_existing)
+                    if result == "linked":
+                        linked += 1
+                        per_target[target_key]["linked"] += 1
+                    else:
+                        skipped += 1
+                        per_target[target_key]["skip_exists"] += 1
+                except Exception as exc:
+                    err_msg = str(exc)
+                    errors.append(
+                        {
+                            "target_dir": target_key,
+                            "skill_name": skill_name,
+                            "source_path": str(src_path),
+                            "target_path": str(target_path),
+                            "error": err_msg,
+                        }
+                    )
+                    print(f"[ERR] failed link: {skill_name} -> {target_path} | {err_msg}")
+                    if not continue_on_error:
+                        raise
+                    continue
 
             print(f"[OK] {result}: {skill_name} -> {target_path}")
 
@@ -114,6 +169,32 @@ def apply_distribution(
         print(f"copied: {copied}")
         print(f"linked: {linked}")
         print(f"skipped: {skipped}")
+        print(f"errors: {len(errors)}")
+
+    if report_json is not None:
+        report_json.parent.mkdir(parents=True, exist_ok=True)
+        report = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "mode": mode,
+            "dry_run": dry_run,
+            "replace_existing": replace_existing,
+            "skills_union_count": len(union),
+            "skills_union": sorted(union.keys()),
+            "warnings": warnings,
+            "errors": errors,
+            "totals": {
+                "copied": copied,
+                "linked": linked,
+                "skipped": skipped,
+                "errors": len(errors),
+            },
+            "per_target": per_target,
+        }
+        report_json.write_text(
+            json.dumps(report, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        print(f"[INFO] report written: {report_json}")
 
 
 def parse_args() -> argparse.Namespace:
@@ -144,6 +225,15 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Replace existing target skill folders/files.",
     )
+    parser.add_argument(
+        "--report-json",
+        help="Write execution report JSON to this file path.",
+    )
+    parser.add_argument(
+        "--continue-on-error",
+        action="store_true",
+        help="Keep distributing to other skills/directories even if some copies fail.",
+    )
     return parser.parse_args()
 
 
@@ -162,6 +252,10 @@ def main() -> None:
         mode=args.mode,
         dry_run=args.dry_run,
         replace_existing=args.replace_existing,
+        continue_on_error=args.continue_on_error,
+        report_json=Path(args.report_json).expanduser().resolve()
+        if args.report_json
+        else None,
     )
 
 

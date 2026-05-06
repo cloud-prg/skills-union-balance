@@ -9,4 +9,5 @@ python3 scripts/unify_skills.py \
   "/Users/cloud_prg/.cursor/skills-cursor" \
   "/Users/cloud_prg/.cursor/plugins/cache/cursor-public/superpowers/b7a8f76985f1e93e75dd2f2a3b424dc731bd9d37/skills" \
   --mode copy \
-  --dry-run
+  --dry-run \
+  --report-json "/Users/cloud_prg/Documents/project/github/skill-union-balancer/report-dry-run.json"
